@@ -1,0 +1,30 @@
+{
+  "name": "whatsapp-api-gateway",
+  "version": "1.0.0",
+  "description": "Gateway system for WhatsApp API instances load balancing",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "whatsapp",
+    "api",
+    "gateway",
+    "load-balancer",
+    "express"
+  ],
+  "author": "WhatsApp API Gateway",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.17.0"
+  }
+}
