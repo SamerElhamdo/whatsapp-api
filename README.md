@@ -1,176 +1,256 @@
-# WhatsApp REST API
+# 🚀 WhatsApp SaaS Gateway - Complete Multi-User Solution
 
-REST API wrapper for the [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js) library, providing an easy-to-use interface to interact with the WhatsApp Web platform. 
-It is designed to be used as a docker container, scalable, secure, and easy to integrate with other non-NodeJs projects.
+<div align="center">
+  <img src="https://img.shields.io/badge/Node.js-18%2B-green" alt="Node.js">
+  <img src="https://img.shields.io/badge/Docker-Ready-blue" alt="Docker">
+  <img src="https://img.shields.io/badge/PostgreSQL-Database-orange" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Redis-Cache-red" alt="Redis">
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+</div>
 
-This project is a work in progress: star it, create issues, features or pull requests ❣️
+## 📋 نظرة عامة
 
-**NOTE**: I can't guarantee you will not be blocked by using this method, although it has worked for me. WhatsApp does not allow bots or unofficial clients on their platform, so this shouldn't be considered totally safe.
+**WhatsApp SaaS Gateway** هو نظام متكامل لإدارة WhatsApp متعدد المستخدمين مع:
 
-## Table of Contents
+- 🏗️ **بنية الخدمات المصغرة** - Gateway API + Session Auth + Docker Orchestration
+- 🔐 **مصادقة متقدمة** - JWT tokens, API keys, subscription management
+- 📊 **قاعدة بيانات شاملة** - PostgreSQL مع 9 جداول للمستخدمين والجلسات
+- 🐳 **Docker Scaling** - إنشاء تلقائي لحاويات WhatsApp منفصلة
+- 📱 **WhatsApp Integration** - يستخدم المشروع الأصلي بدون تعديل
+- 🔄 **Auto-scaling** - توسع تلقائي حسب الحاجة والاشتراك
 
-[1. Quick Start with Docker](#quick-start-with-docker)
+## 🏗️ الهيكل العام
 
-[2. Features](#features)
+```
+whatsapp-api/
+├── server.js                 # 📱 المشروع الأصلي (WhatsApp-web.js)
+├── src/                      # 📁 API الأصلي (لم يتم المس به)
+├── package.json              # 📦 dependencies الأصلية
+└── gateway/                  # 🆕 نظام SaaS الجديد
+    ├── api/                  # 🌐 Gateway API (port 3000)
+    ├── session-auth/         # 🔐 Session Auth Service (port 3001)
+    ├── database/             # 🗄️ PostgreSQL schemas
+    ├── whatsapp-instance/    # 🐳 Docker instance wrapper
+    ├── docker-compose.yml    # 🐳 All services
+    └── README.md            # 📖 Complete documentation
+```
 
-[3. Run Locally](#run-locally)
+## 🚀 نشر سريع على Ubuntu Server
 
-[4. Testing](#testing)
-
-[5. Documentation](#documentation)
-
-[6. Deploy to Production](#deploy-to-production)
-
-[7. Contributing](#contributing)
-
-[8. License](#license)
-
-[9. Star History](#star-history)
-
-## Quick Start with Docker
-
-[![dockeri.co](https://dockerico.blankenship.io/image/chrishubert/whatsapp-web-api)](https://hub.docker.com/r/chrishubert/whatsapp-web-api)
-
-1. Clone the repository:
+### الطريقة الأولى: سكريبت تلقائي (موصى به)
 
 ```bash
-git clone https://github.com/chrishubert/whatsapp-api.git
+# 1. استنساخ المشروع
+git clone <your-repo-url>
 cd whatsapp-api
+
+# 2. تشغيل السكريبت التلقائي
+./gateway/setup-ubuntu.sh
+
+# 3. اتبع التعليمات على الشاشة
 ```
 
-3. Run the Docker Compose:
+**السكريبت سيقوم بـ:**
+- ✅ تثبيت جميع المتطلبات (Node.js, Docker, Nginx)
+- ✅ إعداد قاعدة البيانات والكاش
+- ✅ إنشاء SSL مجاني (اختياري)
+- ✅ إعداد Firewall والأمان
+- ✅ تشغيل النظام كاملاً
+- ✅ إنشاء مستخدم تجريبي
+
+### الطريقة الثانية: يدوياً
 
 ```bash
-docker-compose pull && docker-compose up
-```
-4. Visit http://localhost:3000/session/start/ABCD
+# 1. تثبيت المتطلبات
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl git nodejs npm docker.io docker-compose nginx
 
-5. Scan the QR on your console using WhatsApp mobile app -> Linked Device -> Link a Device (it may take time to setup the session)
-
-6. Visit http://localhost:3000/client/getContacts/ABCD
-
-7. EXTRA: Look at all the callbacks data in `./session/message_log.txt`
-
-![Quick Start](./assets/basic_start.gif)
-
-## Features
-
-1. API and Callbacks
-
-| Actions                      | Status | Sessions                                | Status | Callbacks                                      | Status |
-| ----------------------------| ------| ----------------------------------------| ------| ----------------------------------------------| ------|
-| Send Image Message           | ✅     | Initiate session                       | ✅    | Callback QR code                               | ✅     |
-| Send Video Message           | ✅     | Terminate session                      | ✅    | Callback new message                           | ✅     |
-| Send Audio Message           | ✅     | Terminate inactive sessions            | ✅    | Callback status change                         | ✅     |
-| Send Document Message        | ✅     | Terminate all sessions                 | ✅    | Callback message media attachment              | ✅     |
-| Send File URL                | ✅     | Healthcheck                            | ✅    |                                                |        |
-| Send Button Message          | ✅     | Local test callback                    |        |                                                |        |
-| Send Contact Message         | ✅     |                                        |        |                                                |        |
-| Send List Message            | ✅     |                                        |        |                                                |        |
-| Set Status                   | ✅     |                                        |        |                                                |        |
-| Send Button With Media       | ✅     |                                        |        |                                                |        |
-| Is On Whatsapp?              | ✅     |                                        |        |                                                |        |
-| Download Profile Pic         | ✅     |                                        |        |                                                |        |
-| User Status                  | ✅     |                                        |        |                                                |        |
-| Block/Unblock User           | ✅     |                                        |        |                                                |        |
-| Update Profile Picture       | ✅     |                                        |        |                                                |        |
-| Create Group                 | ✅     |                                        |        |                                                |        |
-| Leave Group                  | ✅     |                                        |        |                                                |        |
-| All Groups                   | ✅     |                                        |        |                                                |        |
-| Invite User                  | ✅     |                                        |        |                                                |        |
-| Make Admin                   | ✅     |                                        |        |                                                |        |
-| Demote Admin                 | ✅     |                                        |        |                                                |        |
-| Group Invite Code            | ✅     |                                        |        |                                                |        |
-| Update Group Participants    | ✅     |                                        |        |                                                |        |
-| Update Group Setting         | ✅     |                                        |        |                                                |        |
-| Update Group Subject         | ✅     |                                        |        |                                                |        |
-| Update Group Description     | ✅     |                                        |        |                                                |        |
-
-3. Handle multiple client sessions (session data saved locally), identified by unique id
-
-4. All endpoints may be secured by a global API key
-
-5. On server start, all existing sessions are restored
-
-6. Set messages automatically as read
-
-7. Disable any of the callbacks
-
-## Run Locally
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/chrishubert/whatsapp-api.git
-cd whatsapp-api
-```
-
-2. Install the dependencies:
-
-```bash
-npm install
-```
-
-3. Copy the `.env.example` file to `.env` and update the required environment variables:
-
-```bash
+# 2. إعداد المشروع
+cd gateway
 cp .env.example .env
+nano .env  # عدّل الإعدادات
+
+# 3. تشغيل الخدمات
+docker-compose up -d
+
+# 4. فحص الصحة
+curl http://localhost:3000/health
 ```
 
-4. Run the application:
+## 🔧 كيف يعمل النظام
 
+### 1. **Gateway API** (المدخل الرئيسي)
 ```bash
-npm run start
+# تسجيل مستخدم جديد
+curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "password123",
+    "name": "Business User"
+  }'
+
+# تسجيل دخول
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "password123"
+  }'
 ```
 
-5. Access the API at `http://localhost:3000`
-
-## Testing
-
-Run the test suite with the following command:
-
+### 2. **إنشاء جلسة WhatsApp**
 ```bash
-npm run test
+curl -X POST http://localhost:3000/api/v1/sessions \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_name": "my-business-whatsapp",
+    "webhook_url": "https://your-webhook.com/whatsapp"
+  }'
 ```
 
-## Documentation
+### 3. **تشغيل Instance (التوسع التلقائي)**
+```bash
+curl -X POST http://localhost:3000/api/v1/instances \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "your-session-id"
+  }'
+```
 
-API documentation can be found in the [`swagger.json`](https://raw.githubusercontent.com/chrishubert/whatsapp-api/master/swagger.json) file. See this file directly into [Swagger Editor](https://editor.swagger.io/?url=https://raw.githubusercontent.com/chrishubert/whatsapp-api/master/swagger.json) or any other OpenAPI-compatible tool to view and interact with the API documentation.
+## 🐳 آلية Docker Scaling
 
-This documentation is straightforward if you are familiar with whatsapp-web.js library (https://docs.wwebjs.dev/)
-If you are still confused - open an issue and I'll improve it.
+```mermaid
+graph TD
+    A[User Request] --> B[Gateway API]
+    B --> C[Check Subscription Limits]
+    C --> D[Find Available Port]
+    D --> E[DockerService.createInstance]
+    E --> F[Create New Container]
+    F --> G[Load Original WhatsApp Project]
+    G --> H[Instance Ready on Port 4000-4999]
+    H --> I[User Can Send Messages]
+```
 
-Also, there is an option to run the documentation endpoint locally by setting the `ENABLE_SWAGGER_ENDPOINT` environment variable. Restart the service and go to `/api-docs` endpoint to see it.
+**كل مستخدم يحصل على:**
+- 🐳 حاويات Docker منفصلة
+- 📱 WhatsApp instances مستقلة
+- 🔒 عزل كامل للبيانات
+- 📊 مراقبة شاملة
 
-By default, all callback events are delivered to the webhook defined with the `BASE_WEBHOOK_URL` environment variable.
-This can be overridden by setting the `*_WEBHOOK_URL` environment variable, where `*` is your sessionId.
-For example, if you have the sessionId defined as `DEMO`, the environment variable must be `DEMO_WEBHOOK_URL`.
+## 📊 المميزات الرئيسية
 
-By setting the `DISABLED_CALLBACKS` environment variable you can specify what events you are **not** willing to receive on your webhook.
+### 🏗️ Architecture
+- **Microservices**: Gateway API, Session Auth, Docker Orchestration
+- **Database**: PostgreSQL مع 9 جداول متخصصة
+- **Caching**: Redis للأداء العالي
+- **Load Balancing**: توزيع التحميل التلقائي
 
-### Scanning QR code
+### 🔐 Security
+- **JWT Authentication**: مصادقة آمنة
+- **API Keys**: مفاتيح API مشفرة
+- **Subscription Control**: تحكم في الحدود والموارد
+- **SSL/TLS**: تشفير كامل
 
-In order to validate a new WhatsApp Web instance you need to scan the QR code using your mobile phone. Official documentation can be found at (https://faq.whatsapp.com/1079327266110265/?cms_platform=android) page. The service itself delivers the QR code content as a webhook event or you can use the REST endpoints (`/session/qr/:sessionId` or `/session/qr/:sessionId/image` to get the QR code as a png image). 
+### 📈 Scaling
+- **Horizontal**: عدة مستخدمين
+- **Vertical**: عدة جلسات لكل مستخدم
+- **Auto-scaling**: إنشاء تلقائي للحاويات
+- **Resource Limits**: حدود CPU وذاكرة
 
-## Deploy to Production
+### 📱 WhatsApp Integration
+- **Zero Changes**: المشروع الأصلي بدون تعديل
+- **Full API**: جميع مميزات whatsapp-web.js
+- **QR Code**: مسح QR لكل جلسة
+- **Webhooks**: إشعارات فورية
 
-- Load the docker image in docker-compose, or your Kubernetes environment
-- Disable the `ENABLE_LOCAL_CALLBACK_EXAMPLE` environment variable
-- Set the `API_KEY` environment variable to protect the REST endpoints
-- Run periodically the `/api/terminateInactiveSessions` endpoint to prevent useless sessions to take up space and resources(only in case you are not in control of the sessions)
+## 🛠️ إدارة النظام
 
-## Contributing
+### مراقبة الصحة
+```bash
+# فحص النظام
+curl http://localhost:3000/health
 
-Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
+# مشاهدة logs
+docker-compose logs -f
 
-## Disclaimer
+# حالة الخدمات
+docker-compose ps
+```
 
-This project is not affiliated, associated, authorized, endorsed by, or in any way officially connected with WhatsApp or any of its subsidiaries or its affiliates. The official WhatsApp website can be found at https://whatsapp.com. "WhatsApp" as well as related names, marks, emblems and images are registered trademarks of their respective owners.
+### التحكم في الخدمات
+```bash
+# إيقاف/تشغيل
+sudo systemctl stop whatsapp-saas
+sudo systemctl start whatsapp-saas
 
-## License
+# إعادة تشغيل خدمة معينة
+docker-compose restart gateway_api
+```
 
-This project is licensed under the MIT License - see the [LICENSE.md](./LICENSE.md) file for details.
+### النسخ الاحتياطية
+```bash
+# تلقائي يومياً في 2 صباحاً
+# يمكنك تشغيل يدوياً:
+/opt/whatsapp-saas/backup.sh
+```
 
-## Star History
+## 🌐 التوسع للإنتاج
 
-[![Star History Chart](https://api.star-history.com/svg?repos=chrishubert/whatsapp-api&type=Date)](https://star-history.com/#chrishubert/whatsapp-api&Date)
+### Single Server Setup
+- **RAM**: 4GB دنيا، 8GB موصى به
+- **CPU**: 2 cores دنيا، 4 cores موصى به
+- **Storage**: 50GB للبيانات والجلسات
+- **Network**: 100Mbps للاستخدام المتوسط
+
+### Multi-Server Setup
+- **Load Balancer**: Nginx/HAProxy
+- **Database**: PostgreSQL Cluster
+- **Redis**: Redis Cluster
+- **Container Registry**: Docker Hub/ECR
+
+## 📚 الدعم والتوثيق
+
+### ملفات مهمة
+- `gateway/README.md` - دليل تفصيلي
+- `gateway/QUICK_START.md` - البدء السريع
+- `gateway/UBUNTU_DEPLOYMENT.md` - نشر Ubuntu
+- `gateway/INSTALLATION_SUMMARY.md` - ملخص التثبيت
+
+### APIs
+- **Gateway API**: http://localhost:3000/api-docs
+- **Session Auth**: http://localhost:3001/api-docs
+- **Health Check**: http://localhost:3000/health
+
+## 🤝 المساهمة
+
+المشروع مفتوح المصدر ونرحب بالمساهمات:
+
+1. Fork المشروع
+2. إنشاء branch جديد
+3. تطوير الميزة
+4. إرسال Pull Request
+
+## 📝 الترخيص
+
+هذا المشروع مرخص تحت MIT License.
+
+## 🏆 الخلاصة
+
+**WhatsApp SaaS Gateway** هو حل متكامل لإدارة WhatsApp التجارية مع:
+
+✅ **توسع تلقائي** - Docker containers لكل مستخدم  
+✅ **أمان متقدم** - JWT، API keys، subscription control  
+✅ **إدارة سهلة** - واجهة API شاملة  
+✅ **مراقبة متقدمة** - Health checks، logs، analytics  
+✅ **نشر بسيط** - Ubuntu setup script  
+
+**🚀 جاهز للإنتاج والاستخدام التجاري!**
+
+---
+
+<div align="center">
+  <strong>Made with ❤️ for the WhatsApp Business Community</strong>
+</div>
