@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: whatsapp_saas_db
+    environment:
+      POSTGRES_DB: whatsapp_saas
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - saas_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: whatsapp_saas_redis
+    command: redis-server --appendonly yes --requirepass redis123
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - saas_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Gateway API Service
+  gateway_api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: whatsapp_gateway_api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker orchestration
+      - ./whatsapp-instance:/app/whatsapp-instance  # For building instance images
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: whatsapp_saas
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redis123
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      DOCKER_HOST: unix:///var/run/docker.sock
+      INSTANCE_PORT_RANGE_START: 4000
+      INSTANCE_PORT_RANGE_END: 4999
+      SESSION_STORAGE_PATH: /app/storage/sessions
+      WEBHOOK_SECRET: your-webhook-secret-key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - session_storage:/app/storage/sessions
+      - instance_logs:/app/logs
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - saas_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Session Auth Service
+  session_auth:
+    build:
+      context: ./session-auth
+      dockerfile: Dockerfile
+    container_name: whatsapp_session_auth
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: whatsapp_saas
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redis123
+      SESSION_STORAGE_PATH: /app/storage/sessions
+      QR_CODE_TIMEOUT: 300000
+    volumes:
+      - session_storage:/app/storage/sessions
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - saas_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Load Balancer (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: whatsapp_saas_nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - gateway_api
+      - session_auth
+    networks:
+      - saas_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  session_storage:
+    driver: local
+  instance_logs:
+    driver: local
+
+networks:
+  saas_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
