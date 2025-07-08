@@ -52,6 +52,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # For Docker orchestration
       - ./whatsapp-instance:/app/whatsapp-instance  # For building instance images
+      - session_storage:/app/storage/sessions
+      - instance_logs:/app/logs
     environment:
       NODE_ENV: production
       DB_HOST: postgres
@@ -68,10 +70,6 @@ services:
       INSTANCE_PORT_RANGE_END: 4999
       SESSION_STORAGE_PATH: /app/storage/sessions
       WEBHOOK_SECRET: your-webhook-secret-key
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - session_storage:/app/storage/sessions
-      - instance_logs:/app/logs
     ports:
       - "3000:3000"
     depends_on:
