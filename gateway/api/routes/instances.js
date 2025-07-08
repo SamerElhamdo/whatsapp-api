@@ -1,6 +1,7 @@
 const express = require('express')
 const { Instance, Session } = require('../models')
 const { authenticate, checkSubscriptionLimits } = require('../middleware/auth')
+const DockerService = require('../services/DockerService')
 const logger = require('../config/logger')
 
 const router = express.Router()
@@ -86,7 +87,7 @@ router.post('/',
         })
       }
 
-      // Generate available port (simplified - in production use proper port management)
+      // Generate available port
       const portStart = parseInt(process.env.INSTANCE_PORT_RANGE_START) || 4000
       const portEnd = parseInt(process.env.INSTANCE_PORT_RANGE_END) || 4999
       const usedPorts = await Instance.findAll({
@@ -108,7 +109,7 @@ router.post('/',
         })
       }
 
-      // Create or update instance
+      // Create or update instance in database
       const instanceData = {
         user_id: req.user.id,
         session_id: session_id,
@@ -124,14 +125,50 @@ router.post('/',
         instance = await Instance.create(instanceData)
       }
 
-      // TODO: Implement Docker container creation here
-      logger.info(`Instance starting: ${instance.container_name} on port ${instance.port}`)
+      // Create Docker container using DockerService
+      try {
+        const containerInfo = await DockerService.createInstance({
+          id: instance.id,
+          user_id: req.user.id,
+          session_id: session_id,
+          container_name: instance.container_name,
+          port: availablePort
+        })
 
-      res.status(201).json({
-        success: true,
-        message: 'Instance is starting',
-        data: { instance }
-      })
+        // Update instance with container information
+        await instance.update({
+          container_id: containerInfo.container_id,
+          status: 'starting'
+        })
+
+        logger.info(`✅ Instance started: ${instance.container_name} on port ${instance.port}`)
+
+        res.status(201).json({
+          success: true,
+          message: 'Instance is starting',
+          data: { 
+            instance: {
+              ...instance.toJSON(),
+              container_id: containerInfo.container_id
+            }
+          }
+        })
+
+      } catch (dockerError) {
+        // Rollback database changes if Docker fails
+        if (!existingInstance) {
+          await instance.destroy()
+        } else {
+          await instance.update({ status: 'error' })
+        }
+
+        logger.error('Docker creation failed:', dockerError)
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to create Docker container',
+          details: dockerError.message
+        })
+      }
 
     } catch (error) {
       logger.error('Start instance error:', error)
@@ -164,9 +201,20 @@ router.get('/:instanceId', authenticate, async (req, res, next) => {
       })
     }
 
+    // Get Docker stats if container exists
+    let containerStats = null
+    if (instance.container_id) {
+      containerStats = await DockerService.getInstanceStats(instance.container_id)
+    }
+
     res.json({
       success: true,
-      data: { instance }
+      data: { 
+        instance: {
+          ...instance.toJSON(),
+          container_stats: containerStats
+        }
+      }
     })
 
   } catch (error) {
@@ -204,17 +252,30 @@ router.post('/:instanceId/stop', authenticate, async (req, res, next) => {
     // Update instance status
     await instance.updateStatus('stopping')
 
-    // TODO: Implement Docker container stop here
-    logger.info(`Instance stopping: ${instance.container_name}`)
-
-    // Simulate stopping process
-    setTimeout(async () => {
+    // Stop Docker container
+    if (instance.container_id) {
+      try {
+        await DockerService.stopInstance(instance.container_id)
+        await instance.updateStatus('stopped')
+        
+        logger.info(`✅ Instance stopped: ${instance.container_name}`)
+      } catch (dockerError) {
+        await instance.updateStatus('error')
+        logger.error('Failed to stop Docker container:', dockerError)
+        
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to stop Docker container',
+          details: dockerError.message
+        })
+      }
+    } else {
       await instance.updateStatus('stopped')
-    }, 2000)
+    }
 
     res.json({
       success: true,
-      message: 'Instance is stopping',
+      message: 'Instance stopped successfully',
       data: { instance }
     })
 
@@ -246,8 +307,23 @@ router.post('/:instanceId/restart', authenticate, async (req, res, next) => {
     // Update instance status
     await instance.updateStatus('starting')
 
-    // TODO: Implement Docker container restart here
-    logger.info(`Instance restarting: ${instance.container_name}`)
+    // Restart Docker container
+    if (instance.container_id) {
+      try {
+        await DockerService.restartInstance(instance.container_id)
+        
+        logger.info(`✅ Instance restarted: ${instance.container_name}`)
+      } catch (dockerError) {
+        await instance.updateStatus('error')
+        logger.error('Failed to restart Docker container:', dockerError)
+        
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to restart Docker container',
+          details: dockerError.message
+        })
+      }
+    }
 
     res.json({
       success: true,
@@ -257,6 +333,98 @@ router.post('/:instanceId/restart', authenticate, async (req, res, next) => {
 
   } catch (error) {
     logger.error('Restart instance error:', error)
+    next(error)
+  }
+})
+
+// @route   DELETE /api/v1/instances/:instanceId
+// @desc    Delete instance and remove container
+// @access  Private
+router.delete('/:instanceId', authenticate, async (req, res, next) => {
+  try {
+    const instance = await Instance.findOne({
+      where: { 
+        id: req.params.instanceId,
+        user_id: req.user.id 
+      }
+    })
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        error: 'Instance not found'
+      })
+    }
+
+    // Remove Docker container if exists
+    if (instance.container_id) {
+      try {
+        await DockerService.removeInstance(instance.container_id)
+        logger.info(`🗑️ Container removed: ${instance.container_name}`)
+      } catch (dockerError) {
+        logger.error('Failed to remove Docker container:', dockerError)
+        // Continue with database deletion even if Docker removal fails
+      }
+    }
+
+    // Delete instance from database
+    await instance.destroy()
+
+    res.json({
+      success: true,
+      message: 'Instance deleted successfully'
+    })
+
+  } catch (error) {
+    logger.error('Delete instance error:', error)
+    next(error)
+  }
+})
+
+// @route   GET /api/v1/instances/:instanceId/logs
+// @desc    Get instance logs
+// @access  Private
+router.get('/:instanceId/logs', authenticate, async (req, res, next) => {
+  try {
+    const instance = await Instance.findOne({
+      where: { 
+        id: req.params.instanceId,
+        user_id: req.user.id 
+      }
+    })
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        error: 'Instance not found'
+      })
+    }
+
+    if (!instance.container_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'No container associated with this instance'
+      })
+    }
+
+    // Get container logs (last 100 lines)
+    const container = DockerService.docker.getContainer(instance.container_id)
+    const logs = await container.logs({
+      stdout: true,
+      stderr: true,
+      tail: 100,
+      timestamps: true
+    })
+
+    res.json({
+      success: true,
+      data: {
+        logs: logs.toString('utf8')
+      }
+    })
+
+  } catch (error) {
+    logger.error('Get instance logs error:', error)
     next(error)
   }
 })

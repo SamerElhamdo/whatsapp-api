@@ -49,6 +49,9 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: whatsapp_gateway_api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker orchestration
+      - ./whatsapp-instance:/app/whatsapp-instance  # For building instance images
     environment:
       NODE_ENV: production
       DB_HOST: postgres

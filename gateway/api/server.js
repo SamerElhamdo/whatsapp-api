@@ -9,6 +9,9 @@ const { sequelize } = require('./config/database')
 const logger = require('./config/logger')
 const { errorHandler, notFound } = require('./middleware/errorHandler')
 
+// Import Docker service for container management
+const DockerService = require('./services/DockerService')
+
 // Import routes
 const authRoutes = require('./routes/auth')
 const sessionRoutes = require('./routes/sessions')
@@ -94,6 +97,9 @@ app.get('/health', async (req, res) => {
     // Check database connection
     await sequelize.authenticate()
     
+    // Get Docker system stats
+    const dockerStats = await DockerService.getSystemStats()
+    
     res.status(200).json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
@@ -101,8 +107,10 @@ app.get('/health', async (req, res) => {
       environment: process.env.NODE_ENV || 'development',
       services: {
         database: 'connected',
-        redis: 'connected' // TODO: Add redis health check
+        redis: 'connected', // TODO: Add redis health check
+        docker: dockerStats ? 'connected' : 'disconnected'
       },
+      system: dockerStats,
       uptime: process.uptime()
     })
   } catch (error) {
@@ -112,6 +120,41 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString(),
       error: error.message
     })
+  }
+})
+
+// Internal routes for Docker instances to communicate back
+app.post('/internal/instances/:instanceId/status', async (req, res) => {
+  try {
+    const { Instance } = require('./models')
+    const instance = await Instance.findByPk(req.params.instanceId)
+    
+    if (instance) {
+      await instance.update({
+        ...req.body,
+        last_health_check: new Date()
+      })
+      logger.info(`Instance status updated: ${req.params.instanceId} - ${req.body.status}`)
+    }
+    
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Failed to update instance status:', error)
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
+app.post('/internal/webhooks', async (req, res) => {
+  try {
+    // Handle webhooks from instances
+    logger.info('Webhook received from instance:', req.body)
+    
+    // TODO: Forward to user's webhook URL if configured
+    
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Failed to process webhook:', error)
+    res.status(500).json({ success: false, error: error.message })
   }
 })
 
@@ -141,6 +184,11 @@ app.get('/', (req, res) => {
       webhooks: `GET,POST,PUT,DELETE /api/${apiVersion}/webhooks/*`,
       analytics: `GET /api/${apiVersion}/analytics/*`,
       health: 'GET /health'
+    },
+    docker: {
+      system_stats: 'Available in /health endpoint',
+      image: process.env.WHATSAPP_IMAGE || 'whatsapp-instance:latest',
+      network: process.env.DOCKER_NETWORK || 'saas_network'
     },
     documentation: `https://docs.yourdomain.com/api/${apiVersion}`,
     support: 'support@yourdomain.com'
@@ -182,6 +230,17 @@ const startServer = async () => {
       logger.info('Database models synchronized')
     }
     
+    // Build WhatsApp instance image if it doesn't exist
+    try {
+      await DockerService.buildWhatsAppImage()
+    } catch (buildError) {
+      logger.warn('Could not build WhatsApp instance image:', buildError.message)
+      logger.warn('Make sure Docker is running and whatsapp-instance directory exists')
+    }
+    
+    // Start Docker monitoring
+    DockerService.startMonitoring()
+    
     // Start listening
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 WhatsApp SaaS Gateway API started successfully!`)
@@ -189,6 +248,8 @@ const startServer = async () => {
       logger.info(`📖 API Documentation: http://localhost:${PORT}/`)
       logger.info(`💚 Health Check: http://localhost:${PORT}/health`)
       logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`)
+      logger.info(`🐳 Docker monitoring: Active`)
+      logger.info(`📊 Instance port range: ${process.env.INSTANCE_PORT_RANGE_START || 4000}-${process.env.INSTANCE_PORT_RANGE_END || 4999}`)
     })
     
     // Handle server errors
