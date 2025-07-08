@@ -1,0 +1,29 @@
+{
+  "name": "whatsapp-core",
+  "version": "1.0.0",
+  "description": "WhatsApp Core Service - Handles WhatsApp Web.js integration and instance management",
+  "main": "instance-wrapper.js",
+  "scripts": {
+    "start": "node instance-wrapper.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "keywords": [
+    "whatsapp",
+    "whatsapp-web",
+    "core",
+    "instance",
+    "integration",
+    "messaging"
+  ],
+  "author": "Christophe Hubert",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.17.0"
+  },
+  "private": true
+}
